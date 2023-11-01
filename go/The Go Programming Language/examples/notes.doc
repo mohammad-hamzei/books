@@ -53,6 +53,22 @@ func incr(p *int) int {
     incr(&v) // side effect: v is now 2 
     fmt.Println(incr(&v)) // "3" (and v is 3)
 # Each time we take the address of a variable or copy a pointer, we create new aliases or ways to identify the same variable. For example, *p is an alias for v. Pointer aliasing is useful because it allows us to access a variable without using its name, but this is a double-edged sword: to find all the statements that access a variable, we have to know all its aliases. It’s not just point- ers that create aliases; aliasing also occurs when we copy values of other reference types like slices, maps, and channels, and even structs, arrays, and interfaces that contain these types.
-
 ***********************************
-
+The lifetime of a variable is the interval of time during which it exists as the program executes. The lifetime of a package-level variable is the entire execution of the program. By contrast, local variables have dynamic lifetimes: a new instance is created each time the declaration statement is executed, and the variable lives on until it becomes unreachable, at which point its storage may be recycled. Function parameters and results are local variables too; they are cre- ated each time their enclosing function is called.
+How does the garbage collector know that a variable’s storage can be reclaimed? The full story is much more detailed than we need here, but the basic idea is that every package-level vari- able, and every local variable of each currently active function, can potentially be the start or root of a path to the variable in question, following pointers and other kinds of references that ultimately lead to the variable. If no such path exists, the variable has become unreachable, so it can no longer affect the rest of the computation. Because the lifetime of a variable is determined only by whether or not it is reachable, a local variable may outlive a single iteration of the enclosing loop. It may continue to exist even after its enclosing function has returned.
+A compiler may choose to allocate local variables on the heap or on the stack but, perhaps sur- prisingly, this choice is not determined by whether var or new was used to declare the variable.
+func f() {
+    var x int
+    x = 1
+    global = &x 
+} 
+             
+func g() { 
+    y := new(int)
+    *y = 1
+}
+Here, x must be heap-allocated because it is still reachable from the variable global after f has returned, despite being declared as a local variable; we say x escapes from f. Conversely, when g returns, the variable *y becomes unreachable and can be recycled. Since *y does not escape from g, it’s safe for the compiler to allocate *y on the stack, even though it was allo- cated with new. In any case, the notion of escaping is not something that you need to worry about in order to write correct code, though it’s good to keep in mind during performance optimization, since each variable that escapes requires an extra memory allocation. Garbage collection is a tremendous help in writing correct programs, but it does not relieve you of the burden of thinking about memory. You don’t need to explicitly allocate and free memory, but to write efficient programs you still need to be aware of the lifetime of variables. For example, keeping unnecessary pointers to short-lived objects within long-lived objects, especially global variables, will prevent the garbage collector from reclaiming the short-lived objects.
+***********************************
+packages:
+Packages in Go serve the same purposes as libraries or modules in other languages, supporting modularity, encapsulation, separate compilation, and reuse. The source code for a package resides in one or more .go files, usually in a directory whose name ends with the import path; for instance, the files of the gopl.io/ch1/helloworld package are stored in directory $GOPATH/src/gopl.io/ch1/helloworld. Each package serves as a separate name space for its declarations. Within the image package, for example, the identifier Decode refers to a different function than does the same identifier in the unicode/utf16 package. To refer to a function from outside its package, we must qualify the identifier to make explicit whether we mean image.Decode or utf16.Decode. Packages also let us hide information by controlling which names are visible outside the pack- age, or exported. In Go, a simple rule governs which identifiers are exported and which are not: exported identifiers start with an upper-case letter. 
+***********************************
