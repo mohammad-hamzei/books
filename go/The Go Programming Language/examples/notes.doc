@@ -72,3 +72,5 @@ Here, x must be heap-allocated because it is still reachable from the variable g
 packages:
 Packages in Go serve the same purposes as libraries or modules in other languages, supporting modularity, encapsulation, separate compilation, and reuse. The source code for a package resides in one or more .go files, usually in a directory whose name ends with the import path; for instance, the files of the gopl.io/ch1/helloworld package are stored in directory $GOPATH/src/gopl.io/ch1/helloworld. Each package serves as a separate name space for its declarations. Within the image package, for example, the identifier Decode refers to a different function than does the same identifier in the unicode/utf16 package. To refer to a function from outside its package, we must qualify the identifier to make explicit whether we mean image.Decode or utf16.Decode. Packages also let us hide information by controlling which names are visible outside the pack- age, or exported. In Go, a simple rule governs which identifiers are exported and which are not: exported identifiers start with an upper-case letter. 
 ***********************************
+
+
