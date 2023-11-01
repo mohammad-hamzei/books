@@ -22,3 +22,37 @@ strings package:
 %T type of any value 
 %% literal percent sign (no operand)
 ***********************************
+switch coinflip() { 
+    case "heads":
+     heads++ 
+    case "tails":
+     tails++ 
+    default: fmt.Println("landed on edge!")
+    }
+***********************************
+The go doc tool makes these documents easily accessible from the command line:
+ $ go doc http.ListenAndServe
+***********************************
+A pointer value is the address of a variable. A pointer is thus the location at which a value is stored. Not every value has an address, but every variable does. With a pointer, we can read or update the value of a variable indirectly, without using or even knowing the name of the variable, if indeed it has a name.
+The zero value for a pointer of any type is nil. ; two pointers are equal if and only if they point to the same variable or both are nil.
+# var x, y int
+ fmt.Println(&x == &x, &x == &y, &x == nil) // "true false false"
+# var p = f()
+ func f() *int {
+    v := 1
+    return &v
+    }
+Each call of f returns a distinct value:
+ fmt.Println(f() == f()) // "false"
+# Because a pointer contains the address of a variable, passing a pointer argument to a function makes it possible for the function to update the variable that was indirectly passed. For exam- ple, this function increments the variable that its argument points to and returns the new value of the variable so it may be used in an expression:
+func incr(p *int) int {
+     *p++ // increments what p points to; does not change p 
+     return *p
+    }
+    v := 1
+    incr(&v) // side effect: v is now 2 
+    fmt.Println(incr(&v)) // "3" (and v is 3)
+# Each time we take the address of a variable or copy a pointer, we create new aliases or ways to identify the same variable. For example, *p is an alias for v. Pointer aliasing is useful because it allows us to access a variable without using its name, but this is a double-edged sword: to find all the statements that access a variable, we have to know all its aliases. It’s not just point- ers that create aliases; aliasing also occurs when we copy values of other reference types like slices, maps, and channels, and even structs, arrays, and interfaces that contain these types.
+
+***********************************
+
