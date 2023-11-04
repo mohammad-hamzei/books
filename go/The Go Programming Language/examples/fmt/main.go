@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 )
 
 // func main() {
@@ -35,11 +36,15 @@ import (
 // 	}
 // }
 
-func main() {
+// func main() {
 
-	for i := 0; i < 1000; i++ {
-		fmt.Println(string(i))
-		fmt.Println("////////////////////")
-	}
-	
+// 	for i := 0; i < 1000; i++ {
+// 		fmt.Println(string(i))
+// 		fmt.Println("////////////////////")
+// 	}
+
+// }
+
+func main() {
+	fmt.Println(strconv.Itoa(3))
 }
