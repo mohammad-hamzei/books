@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 )
 
 // func main() {
@@ -24,15 +22,24 @@ import (
 // 	fmt.Println(s)
 // }
 
+// func main() {
+// 	counts := make(map[string]int)
+// 	input := bufio.NewScanner(os.Stdin)
+// 	for input.Scan() {
+// 		counts[input.Text()]++
+// 	}
+// 	for line, n := range counts {
+// 		if n > 1 {
+// 			fmt.Printf("%d\t%s\n", n, line)
+// 		}
+// 	}
+// }
+
 func main() {
-	counts := make(map[string]int)
-	input := bufio.NewScanner(os.Stdin)
-	for input.Scan() {
-		counts[input.Text()]++
+
+	for i := 0; i < 1000; i++ {
+		fmt.Println(string(i))
+		fmt.Println("////////////////////")
 	}
-	for line, n := range counts {
-		if n > 1 {
-			fmt.Printf("%d\t%s\n", n, line)
-		}
-	}
+	
 }
