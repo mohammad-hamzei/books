@@ -1,0 +1,11 @@
+Go: 
+	The Go Programming Language
+	Concurrency in Go
+	Learn Data Structures and Algorithms with Golang_ Level up your Go programming skills to develop faster and more efficient code-Packt Publishing (2019)
+	Burak Serdar - Effective Concurrency in Go_ Develop, analyze, and troubleshoot high performance concurrent applications with ease-Packt Publishing
+	Cloud Native Go_ Building Reliable Services in Unreliable Environments-O'Reilly Media (2021)
+	Travis Jeffery - Distributed Services with Go_ Your Guide to Reliable, Scalable, and Maintainable Systems-Pragmatic Bookshelf (2021)
+	ethereum-development-with-go
+	aws-Mohamed Labouardy - Hands-On Serverless Applications with Go-Packt (2018)
+	
+	
