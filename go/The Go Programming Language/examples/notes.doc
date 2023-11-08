@@ -181,4 +181,351 @@ Recover:
     Recovering from a panic within the same package can help simplify the handling of complex or unexpected errors, but as a general rule, you should not attempt to recover from another package’s panic. Public APIs should report failures as errors. Similarly, you should not recover from a panic that may pass through a function you do not maintain, such as a caller-provided callback, since you cannot reason about its safety.
 ***********************************************
 Method: 
+
+***********************************************
+Method with a pointer receiver:
+    Because calling a function makes a copy of each argument value, if a function needs to update a variable, or if an argument is so large that we wish to avoid copying it, we must pass the address of the variable using a pointer. The same goes for methods that need to update the receiver variable.
+    func (p *Point) ScaleBy(factor float64) { 
+        p.X *= factor 
+        p.Y *= factor 
+        }
+
+    The name of this method is (*Point).ScaleBy. The parentheses are necessary; without them, the expression would be parsed as *(Point.ScaleBy).
+    In a realistic program, convention dictates that if any method of Point has a pointer receiver, then all methods of Point should have a pointer receiver, even ones that don’t strictly need it. We’ve broken this rule for Point so that we can show both kinds of method. Named types (Point) and pointers to them (*Point) are the only types that may appear in a receiver declaration. Furthermore, to avoid ambiguities, method declarations are not permitted on named types that are themselves pointer types:
+    type P *int 
+    func (P) f() { /* ... */ } // compile error: invalid receiver type
+    The (*Point).ScaleBy method can be called by providing a *Point receiver, like this: 
+    r := &Point{1, 2} 
+    r.ScaleBy(2) 
+    fmt.Println(*r) // "{2, 4}" 
+    or this: 
+    p := Point{1, 2} 
+    pptr := &p 
+    pptr.ScaleBy(2) 
+    fmt.Println(p) // "{2, 4}" 
+    or this: 
+    p := Point{1, 2} 
+    (&p).ScaleBy(2) 
+    fmt.Println(p) // "{2, 4}" 
+    But the last two cases are ungainly. Fortunately, the language helps us here. If the receiver p is a variable of type Point but the method requires a *Point receiver, we can use this shorthand:
+    p.ScaleBy(2)
+    and the compiler will perform an implicit &p on the variable. This works only for variables, including struct fields like p.X and array or slice elements like perim[0]. We cannot call a *Point method on a non-addressable Point receiver, because there’s no way to obtain the address of a temporary value.
+
+    Let’s summarize these three cases again, since they are a frequent point of confusion. In every valid method call expression, exactly one of these three statements is true. Either the receiver argument has the same type as the receiver parameter, for example both have type T or both have type *T
+    Point{1, 2}.Distance(q) // Point 
+    pptr.ScaleBy(2) // *Point 
+    Or the receiver argument is a variable of type T and the receiver parameter has type *T. The compiler implicitly takes the address of the variable:
+    p.ScaleBy(2) // implicit (&p) 
+    Or the receiver argument has type *T and the receiver parameter has type T. The compiler implicitly dereferences the receiver, in other words, loads the value:
+    pptr.Distance(q) // implicit (*pptr)
+
+    Just as some functions allow nil pointers as arguments, so do some methods for their receiver, especially if nil is a meaningful zero value of the type, as with maps and slices. In this simple linked list of integers, nil represents the empty list.
+*************************************
+Method values and expressions: 
+    Usually we select and call a method in the same expression, as in p.Distance(), but it’s possible to separate these two operations. The selector p.Distance yields a method value, a function that binds a method (Point.Distance) to a specific receiver value p. This function can then be invoked without a receiver value; it needs only the non-receiver arguments. 
+    p := Point{1, 2} 
+    q := Point{4, 6}
+
+    distanceFromP := p.Distance // method value 
+    fmt.Println(distanceFromP(q)) // "5" 
+    var origin Point // {0, 0} 
+    fmt.Println(distanceFromP(origin)) // "2.23606797749979", √5
+
+    scaleP := p.ScaleBy // method value 
+    scaleP(2) // p becomes (2, 4) 
+    scaleP(3) // then (6, 12) 
+    scaleP(10) // then (60, 120)
+
+    Method values are useful when a package’s API calls for a function value, and the client’s desired behavior for that function is to call a method on a specific receiver. For example, the function time.AfterFunc calls a function value after a specified delay.
+    Method expressions can be helpful when you need a value to represent a choice among several methods belonging to the same type so that you can call the chosen method with many different receivers. In the following example, the variable op represents either the addition or the subtraction method of type Point, and Path.
+*****************************************
+Encapsulation: 
+    Method expressions can be helpful when you need a value to represent a choice among several methods belonging to the same type so that you can call the chosen method with many different receivers. In the following example, the variable op represents either the addition or the subtraction method of type Point, and Path.
+    Go has only one mechanism to control the visibility of names: capitalized identifiers are exported from the package in which they are defined, and uncapitalized names are not. The same mechanism that limits access to members of a package also limits access to the fields of a struct or the methods of a type. As a consequence, to encapsulate an object, we must make it a struct.
+*****************************************
+Interfaces:
+    Go has only one mechanism to control the visibility of names: capitalized identifiers are exported from the package in which they are defined, and uncapitalized names are not. The same mechanism that limits access to members of a package also limits access to the fields of a struct or the methods of a type. As a consequence, to encapsulate an object, we must make it a struct.
+    Many object-oriented languages have some notion of interfaces, but what makes Go’s interfaces so distinctive is that they are satisfied implicitly. In other words, there’s no need to declare all the interfaces that a given concrete type satisfies; simply possessing the necessary methods is enough. This design lets you create new interfaces that are satisfied by existing concrete types without changing the existing types, which is particularly useful for types defined in packages that you don’t control. 
+ Interfaces as contracts: 
+    All the types we’ve looked at so far have been concrete types. A concrete type specifies the exact representation of its values and exposes the intrinsic operations of that representation, such as arithmetic for numbers, or indexing, append, and range for slices. A concrete type may also provide additional behaviors through its methods. When you have a value of a concrete type, you know exactly what it is and what you can do with it.
+    There is another kind of type in Go called an interface type. An interface is an abstract type. It doesn’t expose the representation or internal structure of its values, or the set of basic operations they support; it reveals only some of their methods. When you have a value of an interface type, you know nothing about what it is; you know only what it can do, or more precisely, what behaviors are provided by its methods.
+Interface Types:
+    An interface type specifies a set of methods that a concrete type must possess to be considered an instance of that interface.
+Interface Satisfaction: 
+    A type satisfies an interface if it possesses all the methods the interface requires. For example, an *os.File satisfies io.Reader, Writer, Closer, and ReadWriter. A *bytes.Buffer satisfies Reader, Writer, and ReadWriter, but does not satisfy Closer because it does not have a Close method. As a shorthand, Go programmers often say that a concrete type “is a” particular interface type, meaning that it satisfies the interface. For example, a *bytes.Buffer is an io.Writer; an *os.File is an io.ReadWriter.
+Interface Values:
+    Conceptually, a value of an interface type, or interface value, has two components, a concrete type and a value of that type. These are called the interface’s dynamic type and dynamic value. For a statically typed language like Go, types are a compile-time concept, so a type is not a value. In our conceptual model, a set of values called type descriptors provide information about each type, such as its name and methods. In an interface value, the type component is represented by the appropriate type descriptor.
+    In Go, variables are always initialized to a well-defined value, and interfaces are no exception. The zero value for an interface has both its type and value components set to nil.
+    An interface value is described as nil or non-nil based on its dynamic type, so this is a nil interface value. You can test whether an interface value is nil using w == nil or w != nil. Calling any method of a nil interface value causes a panic:
+    w.Write([]byte("hello")) // panic: nil pointer dereference
+    In general, we cannot know at compile time what the dynamic type of an interface value will be, so a call through an interface must use dynamic dispatch. Instead of a direct call, the compiler must generate code to obtain the address of the method named Write from the type descriptor, then make an indirect call to that address. The receiver argument for the call is a copy of the interface’s dynamic value, os.Stdout. The effect is as if we had made this call directly:
+    os.Stdout.Write([]byte("hello")) // "hello" 
+    Interface values may be compared using == and !=. Two interface values are equal if both are nil, or if their dynamic types are identical and their dynamic values are equal according to the usual behavior of == for that type. Because interface values are comparable, they may be used as the keys of a map or as the operand of a switch statement. 
+    However, if two interface values are compared and have the same dynamic type, but that type is not comparable (a slice, for instance), then the comparison fails with a panic:
+    var x interface{} = []int{1, 2, 3} 
+    fmt.Println(x == x) // panic: comparing uncomparable type []int 
+Caveat: An Interface Containing a Nil Pointer Is Non-Nil:
+    A nil interface value, which contains no value at all, is not the same as an interface value containing a pointer that happens to be nil. This subtle distinction creates a trap into which every Go programmer has stumbled.
+The error Interface:
+    Since the beginning of this book, we’ve been using and creating values of the mysterious predeclared error type without explaining what it really is. In fact, it’s just an interface type with a single method that returns an error message:
+    type error interface { 
+        Error() string 
+        }
+    The simplest way to create an error is by calling errors.New, which returns a new error for a given error message. The entire errors package is only four lines long:
+    package errors
+    func New(text string) error { return &errorString{text} }
+    type errorString struct { text string }
+    func (e *errorString) Error() string { return e.text } 
+
+    The underlying type of errorString is a struct, not a string, to protect its representation from inadvertent (or premeditated) updates. And the reason that the pointer type *errorString, not errorString alone, satisfies the error interface is so that every call to New allocates a distinct error instance that is equal to no other. We would not want a distinguished error such as io.EOF to compare equal to one that merely happened to have the same message.
+********************************
+Type Assertions: 
+    A type assertion is an operation applied to an interface value. Syntactically, it looks like x.(T), where x is an expression of an interface type and T is a type, called the “asserted” type. A type assertion checks that the dynamic type of its operand matches the asserted type.
+    There are two possibilities. First, if the asserted type T is a concrete type, then the type assertion checks whether x’s dynamic type is identical to T. If this check succeeds, the result of the type assertion is x’s dynamic value, whose type is of course T. In other words, a type assertion to a concrete type extracts the concrete value from its operand.
+    Second, if instead the asserted type T is an interface type, then the type assertion checks whether x’s dynamic type satisfies T. If this check succeeds, the dynamic value is not extracted; the result is still an interface value with the same type and value components, but the result has the interface type T. In other words, a type assertion to an interface type changes the type of the expression, making a different (and usually larger) set of methods accessible, but it preserves the dynamic type and value components inside the interface value.
+Discriminating Errors with Type Assertions:
+    Consider the set of errors returned by file operations in the os package. I/O can fail for any number of reasons, but three kinds of failure often must be handled differently: file already exists (for create operations), file not found (for read operations), and permission denied.
+*********************************
+Type Switches:
+    Interfaces are used in two distinct styles. In the first style, exemplified by io.Reader, io.Writer, fmt.Stringer, sort.Interface, http.Handler, and error, an interface’s methods express the similarities of the concrete types that satisfy the interface but hide the representation details and intrinsic operations of those concrete types. The emphasis is on the methods, not on the concrete types.
+    The second style exploits the ability of an interface value to hold values of a variety of concrete types and considers the interface to be the union of those types. Type assertions are used to discriminate among these types dynamically and treat each case differently. In this style, the emphasis is on the concrete types that satisfy the interface, not on the interface’s methods (if indeed it has any), and there is no hiding of information. We’ll describe interfaces used this way as discriminated unions.
+    If you’re familiar with object-oriented programming, you may recognize these two styles as subtype polymorphism and ad hoc polymorphism, but you needn’t remember those terms.
+**********************************
+Goroutines:
+    In Go, each concurrently executing activity is called a goroutine. Consider a program that has two functions, one that does some computation and one that writes some output, and assume that neither function calls the other. A sequential program may call one function and then call the other, but in a concurrent program with two or more goroutines, calls to both functions can be active at the same time. We’ll see such a program in a moment. 
+    When a program starts, its only goroutine is the one that calls the main function, so we call it the main goroutine. New goroutines are created by the go statement. Syntactically, a go statement is an ordinary function or method call prefixed by the keyword go. A go statement causes the function to be called in a newly created goroutine. The go statement itself completes immediately:
+    f() // call f(); wait for it to return 
+    go f() // create a new goroutine that calls f(); don't wait 
+***********************************
+Channels:
+    If goroutines are the activities of a concurrent Go program, channels are the connections between them. A channel is a communication mechanism that lets one goroutine send values to another goroutine. Each channel is a conduit for values of a particular type, called the channel’s element type. The type of a channel whose elements have type int is written chan int.
+    To create a channel, we use the built-in make function:
+    ch := make(chan int) // ch has type 'chan int' 
+    As with maps, a channel is a reference to the data structure created by make. When we copy a channel or pass one as an argument to a function, we are copying a reference, so caller and callee refer to the same data structure. As with other reference types, the zero value of a channel is nil.
+    Two channels of the same type may be compared using ==. The comparison is true if both are references to the same channel data structure. A channel may also be compared to nil.
+    A channel has two principal operations, send and receive, collectively known as communications. A send statement transmits a value from one goroutine, through the channel, to another goroutine executing a corresponding receive expression. Both operations are written using the <- operator. In a send statement, the <- separates the channel and value operands. In a receive expression, <- precedes the channel operand. A receive expression whose result is not used is a valid statement.
+    ch <- x // a send statement
+    x = <-ch // a receive expression in an assignment statement <-ch // a receive statement; result is discarded
+    Channels support a third operation, close, which sets a flag indicating that no more values will ever be sent on this channel; subsequent attempts to send will panic. Receive operations on a closed channel yield the values that have been sent until no more values are left; any receive operations thereafter complete immediately and yield the zero value of the channel’s element type. 
+    To close a channel, we call the built-in close function:
+    close(ch)
+    A channel created with a simple call to make is called an unbuffered channel, but make accepts an optional second argument, an integer called the channel’s capacity. If the capacity is non-zero, make creates a buffered channel.
+    ch = make(chan int) // unbuffered channel 
+    ch = make(chan int, 0) // unbuffered channel 
+    ch = make(chan int, 3) // buffered channel with capacity 3
+
+Unbuffered Channels:
+    A send operation on an unbuffered channel blocks the sending goroutine until another goroutine executes a corresponding receive on the same channel, at which point the value is transmitted and both goroutines may continue. Conversely, if the receive operation was attempted first, the receiving goroutine is blocked until another goroutine performs a send on the same channel.
+    Communication over an unbuffered channel causes the sending and receiving goroutines to synchronize. Because of this, unbuffered channels are sometimes called synchronous channels. When a value is sent on an unbuffered channel, the receipt of the value happens before the reawakening of the sending goroutine. 
+    In discussions of concurrency, when we say x happens before y, we don’t mean merely that x occurs earlier in time than y; we mean that it is guaranteed to do so and that all its prior effects, such as updates to variables, are complete and that you may rely on them.
+    When x neither happens before y nor after y, we say that x is concurrent with y. This doesn’t mean that x and y are necessarily simultaneous, merely that we cannot assume anything about their ordering. As we’ll see in the next chapter, it’s necessary to order certain events during the program’s execution to avoid the problems that arise when two goroutines access the same variable concurrently.
+
+Pipelines:
+    Channels can be used to connect goroutines together so that the output of one is the input to another. This is called a pipeline. The program below consists of three goroutines connected by two channels.
+    The first goroutine, counter, generates the integers 0, 1, 2, ..., and sends them over a channel to the second goroutine, squarer, which receives each value, squares it, and sends the result over another channel to the third goroutine, printer, which receives the squared values and prints them. For clarity of this example, we have intentionally chosen very simple functions, though of course they are too computationally trivial to warrant their own goroutines in a realistic program. 
+    As you might expect, the program prints the infinite series of squares 0, 1, 4, 9, and so on. Pipelines like this may be found in long-running server programs where channels are used for lifelong communication between goroutines containing infinite loops. But what if we want to send only a finite number of values through the pipeline?
+    If the sender knows that no further values will ever be sent on a channel, it is useful to communicate this fact to the receiver goroutines so that they can stop waiting. This is accomplished by closing the channel using the built-in close function:
+    close(naturals)
+    After a channel has been closed, any further send operations on it will panic. After the closed channel has been drained, that is, after the last sent element has been received, all subsequent receive operations will proceed without blocking but will yield a zero value. Closing the naturals channel above would cause the squarer ’s loop to spin as it receives a never-ending stream of zero values, and to send these zeros to the printer.
+    There is no way to test directly whether a channel has been closed, but there is a variant of the receive operation that produces two results: the received channel element, plus a boolean value, conventionally called ok, which is true for a successful receive and false for a receive on a closed and drained channel. Using this feature, we can modify the squarer ’s loop to stop when the naturals channel is drained and close the squares channel in turn.
+    Because the syntax above is clumsy and this pattern is common, the language lets us use a range loop to iterate over channels too. This is a more convenient syntax for receiving all the values sent on a channel and terminating the loop after the last one.
+Buffered Channels:
+    A buffered channel has a queue of elements. The queue’s maximum size is determined when it is created, by the capacity argument to make. The statement below creates a buffered channel capable of holding three string values.
+    ch = make(chan string, 3)
+    A send operation on a buffered channel inserts an element at the back of the queue, and a receive operation removes an element from the front. If the channel is full, the send operation blocks its goroutine until space is made available by another goroutine’s receive. Conversely, if the channel is empty, a receive operation blocks until a value is sent by another goroutine. 
+    We can send up to three values on this channel without the goroutine blocking:
+    ch <- "A" 
+    ch <- "B" 
+    ch <- "C" 
+    If we receive one value,
+    fmt.Println(<-ch) // "A" 
+    the channel is neither full nor empty (Figure 8.4), so either a send operation or a receive operation could proceed without blocking. In this way, the channel’s buffer decouples the sending and receiving goroutines.
+    In the unlikely event that a program needs to know the channel’s buffer capacity, it can be obtained by calling the built-in cap function:
+    fmt.Println(cap(ch)) // "3" 
+    When applied to a channel, the built-in len function returns the number of elements currently buffered. Since in a concurrent program this information is likely to be stale as soon as it is retrieved, its value is limited, but it could conceivably be useful during fault diagnosis or performance optimization. 
+    fmt.Println(len(ch)) // "2" 
+    programs they are usually executed by different goroutines. Novices are sometimes tempted to use buffered channels within a single goroutine as a queue, lured by their pleasingly simple syntax, but this is a mistake. Channels are deeply connected to goroutine scheduling, and without another goroutine receiving from the channel, a sender—and perhaps the whole program—risks becoming blocked forever. If all you need is a simple queue, make one using a slice.
+    The example below shows an application of a buffered channel. It makes parallel requests to three mirrors, that is, equivalent but geographically distributed servers. It sends their responses over a buffered channel, then receives and returns only the first response, which is the quickest one to arrive. Thus mirroredQuery returns a result even before the two slower servers have responded. (Incidentally, it’s quite normal for several goroutines to send values to the same channel concurrently, as in this example, or to receive from the same channel.) 
+    Had we used an unbuffered channel, the two slower goroutines would have gotten stuck trying to send their responses on a channel from which no goroutine will ever receive. This situation, called a goroutine leak, would be a bug. Unlike garbage variables, leaked goroutines are not automatically collected, so it is important to make sure that goroutines terminate themselves when no longer needed.
+    The choice between unbuffered and buffered channels, and the choice of a buffered channel’s capacity, may both affect the correctness of a program. Unbuffered channels give stronger synchronization guarantees because every send operation is synchronized with its corresponding receive; with buffered channels, these operations are decoupled. Also, when we know an upper bound on the number of values that will be sent on a channel, it’s not unusual to create a buffered channel of that size and perform all the sends before the first value is received. Failure to allocate sufficient buffer capacity would cause the program to deadlock. 
+    Channel buffering may also affect program performance. Imagine three cooks in a cake shop, one baking, one icing, and one inscribing each cake before passing it on to the next cook in the assembly line. In a kitchen with little space, each cook that has finished a cake must wait for the next cook to become ready to accept it; this rendezvous is analogous to communication over an unbuffered channel. 
+    If there is space for one cake between each cook, a cook may place a finished cake there and immediately start work on the next; this is analogous to a buffered channel with capacity 1. So long as the cooks work at about the same rate on average, most of these handovers proceed quickly, smoothing out transient differences in their respective rates. More space between cooks—larger 
+    buffers—can smooth out bigger transient variations in their rates without stalling the assembly line, such as happens when one cook takes a short break, then later rushes to catch up.
+    On the other hand, if an earlier stage of the assembly line is consistently faster than the following stage, the buffer between them will spend most of its time full. Conversely, if the later stage is faster, the buffer will usually be empty. A buffer provides no benefit in this case.
+    The assembly line metaphor is a useful one for channels and goroutines. For example, if the second stage is more elaborate, a single cook may not be able to keep up with the supply from the first cook or meet the demand from the third. To solve the problem, we could hire another cook to help the second, performing the same task but working independently. This is analogous to creating another goroutine communicating over the same channels.
+****************************
+Multiplexing with select: 
+    select { 
+        case <-ch1: 
+            // ... 
+        case x := <-ch2: 
+            // ...use x... 
+        case ch3 <- y: 
+            // ... 
+        default: 
+            // ...
+    }
+
+    The general form of a select statement is shown above. Like a switch statement, it has a number of cases and an optional default. Each case specifies a communication (a send or receive operation on some channel) and an associated block of statements. A receive expression may appear on its own, as in the first case, or within a short variable declaration, as in the second case; the second form lets you refer to the received value.
+    A select waits until a communication for some case is ready to proceed. It then performs that communication and executes the case’s associated statements; the other communications do not happen. A select with no cases, select{}, waits forever.
+*****************************
+Cancellation: 
+    Sometimes we need to instruct a goroutine to stop what it is doing, for example, in a web server performing a computation on behalf of a client that has disconnected.
+    There is no way for one goroutine to terminate another directly, since that would leave all its shared variables in undefined states. In the rocket launch program (§8.7) we sent a single value on a channel named abort, which the countdown goroutine interpreted as a request to stop itself. But what if we need to cancel two goroutines, or an arbitrary number?
+    One possibility might be to send as many events on the abort channel as there are goroutines to cancel. If some of the goroutines have already terminated themselves, however, our count will be too large, and our sends will get stuck. On the other hand, if those goroutines have spawned other goroutines, our count will be too small, and some goroutines will remain unaware of the cancellation. In general, it’s hard to know how many goroutines are working on our behalf at any given moment. Moreover, when a goroutine receives a value from the abort channel, it consumes that value so that other goroutines won’t see it. For cancellation, what we need is a reliable mechanism to broadcast an event over a channel so that many goroutines can see it as it occurs and can later see that it has occurred.
+    Recall that after a channel has been closed and drained of all sent values, subsequent receive operations proceed immediately, yielding zero values. We can exploit this to create a broadcast mechanism: don’t send a value on the channel, close it.
+    We can add cancellation to the du program from the previous section with a few simple changes. First, we create a cancellation channel on which no values are ever sent, but whose closure indicates that it is time for the program to stop what it is doing. We also define a utility function, cancelled, that checks or polls the cancellation state at the instant it is called. 
+******************************
+Concurrency with Shared Variables:
+Race Conditions:
+    In a sequential program, that is, a program with only one goroutine, the steps of the program happen in the familiar execution order determined by the program logic. For instance, in a sequence of statements, the first one happens before the second one, and so on. In a program with two or more goroutines, the steps within each goroutine happen in the familiar order, but in general we don’t know whether an event x in one goroutine happens before an event y in another goroutine, or happens after it, or is simultaneous with it. When we cannot confidently say that one event happens before the other, then the events x and y are concurrent. 
+    Consider a function that works correctly in a sequential program. That function is concurrency-safe if it continues to work correctly even when called concurrently, that is, from two or more goroutines with no additional synchronization. We can generalize this notion to a set of collaborating functions, such as the methods and operations of a particular type. A type is concurrency-safe if all its accessible methods and operations are concurrency-safe.
+    We can make a program concurrency-safe without making every concrete type in that program concurrency-safe. Indeed, concurrency-safe types are the exception rather than the rule, so you should access a variable concurrently only if the documentation for its type says that this is safe. We avoid concurrent access to most variables either by confining them to a single goroutine or by maintaining a higher-level invariant of mutual exclusion. We’ll explain these terms in this chapte
+    In contrast, exported package-level functions are generally expected to be concurrency-safe. Since package-level variables cannot be confined to a single goroutine, functions that modify them must enforce mutual exclusion.
+    There are many reasons a function might not work when called concurrently, including deadlock, livelock, and resource starvation. We don’t have space to discuss all of them, so we’ll focus on the most important one, the race condition.
+    A race condition is a situation in which the program does not give the correct result for some interleavings of the operations of multiple goroutines. Race conditions are pernicious because they may remain latent in a program and appear infrequently, perhaps only under heavy load or when using certain compilers, platforms, or architectures. This makes them hard to reproduce and diagnose.
+
+Mutual Exclusion: sync.Mutex: 
+    Each time a goroutine accesses the variables of the bank (just balance here), it must call the mutex’s Lock method to acquire an exclusive lock. If some other goroutine has acquired the lock, this operation will block until the other goroutine calls Unlock and the lock becomes available again. The mutex guards the shared variables. By convention, the variables guarded by a mutex are declared immediately after the declaration of the mutex itself. If you deviate from this, be sure to document it. The region of code between Lock and Unlock in which a goroutine is free to read and modify the shared variables is called a critical section. The lock holder ’s call to Unlock happens before any other goroutine can acquire the lock for itself. It is essential that the goroutine release the lock once it is finished, on all paths through the function, including error paths. 
+Read/Write Mutexes: sync.RWMutex: 
+*********************************
+The Race Detector: 
+    Even with the greatest of care, it’s all too easy to make concurrency mistakes. Fortunately, the Go runtime and toolchain are equipped with a sophisticated and easy-to-use dynamic analysis tool, the race detector. Just add the -race flag to your go build, go run, or go test command. This causes the compiler to build a modified version of your application or test with additional instrumentation that effectively records all accesses to shared variables that occurred during execution, along with the identity of the goroutine that read or wrote the variable. In addition, the modified program records all synchronization events, such as go statements, channel operations, and calls to (*sync.Mutex).Lock, (*sync.WaitGroup).Wait, and so on. (The complete set of synchronization events is specified by the The Go Memory Model document that accompanies the language specification.) The race detector studies this stream of events, looking for cases in which one goroutine reads or writes a shared variable that was most recently written by a different goroutine without an intervening synchronization operation. This indicates a concurrent access to the shared variable, and thus a data race. The tool prints a report that includes the identity of the variable, and the stacks of active function calls in the reading goroutine and the writing goroutine. This is usually sufficient to pinpoint the problem. Section 9.7 contains an example of the race detector in action. The race detector reports all data races that were actually executed. However, it can only detect race conditions that occur during a run; it cannot prove that none will ever occur. For best results, make sure that your tests exercise your packages using concurrency
+Growable Stacks:
+    Each OS thread has a fixed-size block of memory (often as large as 2MB) for its stack, the work area where it saves the local variables of function calls that are in progress or temporarily suspended while another function is called. This fixed-size stack is simultaneously too much and too little. A 2MB stack would be a huge waste of memory for a little goroutine, such as one that merely waits for a WaitGroup then closes a channel. It’s not uncommon for a Go program to create hundreds of thousands of goroutines at one time, which would be impossible with stacks this large. Yet despite their size, fixed-size stacks are not always big enough for the most complex and deeply recursive of functions. Changing the fixed size can improve space efficiency and allow more threads to be created, or it can enable more deeply recursive functions, but it cannot do both.
+    In contrast, a goroutine starts life with a small stack, typically 2KB. A goroutine’s stack, like the stack of an OS thread, holds the local variables of active and suspended function calls, but unlike an OS thread, a goroutine’s stack is not fixed; it grows and shrinks as needed. The size limit for a goroutine stack may be as much as 1GB, orders of magnitude larger than a typical fixed-size thread stack, though of course few goroutines use that much.
+Goroutine Scheduling:
+    OS threads are scheduled by the OS kernel. Every few milliseconds, a hardware timer interrupts the processor, which causes a kernel function called the scheduler to be invoked. This function suspends the currently executing thread and saves its registers in memory, looks over the list of threads and decides which one should run next, restores that thread’s registers from memory, then resumes the execution of that thread. Because OS threads are scheduled by the kernel, passing control from one thread to another requires a full context switch, that is, saving the state of one user thread to memory, restoring the state of another, and updating the scheduler ’s data structures. This operation is slow, due to its poor locality and the number of memory accesses required, and has historically only gotten worse as the number of CPU cycles required to access memory has increased.
+    The Go runtime contains its own scheduler that uses a technique known as m:n scheduling, because it multiplexes (or schedules) m goroutines on n OS threads. The job of the Go scheduler is analogous to
+    that of the kernel scheduler, but it is concerned only with the goroutines of a single Go program. Unlike the operating system’s thread scheduler, the Go scheduler is not invoked periodically by a hardware timer, but implicitly by certain Go language constructs. For example, when a goroutine calls time.Sleep or blocks in a channel or mutex operation, the scheduler puts it to sleep and runs another goroutine until it is time to wake the first one up. Because it doesn’t need a switch to kernel context, rescheduling a goroutine is much cheaper than rescheduling a thread.
+GOMAXPROCS:
+    The Go scheduler uses a parameter called GOMAXPROCS to determine how many OS threads may be actively executing Go code simultaneously. Its default value is the number of CPUs on the machine, so on a machine with 8 CPUs, the scheduler will schedule Go code on up to 8 OS threads at once. (GOMAXPROCS is the n in m:n scheduling.) Goroutines that are sleeping or blocked in a communication do not need a thread at all. Goroutines that are blocked in I/O or other system calls or are calling non-Go functions, do need an OS thread, but GOMAXPROCS need not account for them.
+    You can explicitly control this parameter using the GOMAXPROCS environment variable or the runtime.GOMAXPROCS function. 
+Goroutines Have No Identity:
+    In most operating systems and programming languages that support multithreading, the current thread has a distinct identity that can be easily obtained as an ordinary value, typically an integer or pointer. This makes it easy to build an abstraction called thread-local storage, which is essentially a global map keyed by thread identity, so that each thread can store and retrieve values independent of other threads.
+    Goroutines have no notion of identity that is accessible to the programmer. This is by design, since thread-local storage tends to be abused. For example, in a web server implemented in a language with thread-local storage, it’s common for many functions to find information about the HTTP request on whose behalf they are currently working by looking in that storage. However, just as with programs that rely excessively on global variables, this can lead to an unhealthy “action at a distance” in which the behavior of a function is not determined by its arguments alone, but by the identity of the thread in which it runs. Consequently, if the identity of the thread should change—some worker threads are enlisted to help, say—the function misbehaves mysteriously.
+***********************************
+The Go Tool:
+    build   compile packages and dependencies 
+    clean   remove object files 
+    doc     show documentation for package or symbol 
+    env     print Go environment information 
+    fmt     run gofmt on package sources 
+    get     download and install packages and dependencies 
+    install compile and install packages and dependencies 
+    list    list packages 
+    run     compile and run Go program 
+    test    test packages 
+    version print Go version 
+    vet     run go tool vet on packages
+
+Workspace Organization:
+    The only configuration most users ever need is the GOPATH environment variable, which specifies the root of the workspace.
+    $ export GOPATH=$HOME/gobook 
+    $ go get gopl.io/... 
+
+    GOPATH has three subdirectories. The src subdirectory holds source code. Each package resides in a directory whose name relative to $GOPATH/src is the package’s import path, such as gopl.io/ch1/helloworld. Observe that a single GOPATH workspace contains multiple version- control repositories beneath src, such as gopl.io or golang.org. The pkg subdirectory is where the build tools store compiled packages, and the bin subdirectory holds executable programs like helloworld.
+    A second environment variable, GOROOT, specifies the root directory of the Go distribution, which provides all the packages of the standard library. The directory structure beneath GOROOT resembles that of GOPATH, so, for example, the source files of the fmt package reside in the $GOROOT/src/fmt directory. Users never need to set GOROOT since, by default, the go tool will use the location where it was installed.
+    The go env command prints the effective values of the environment variables relevant to the toolchain, including the default values for the missing ones. GOOS specifies the target operating system (for example, android, linux, darwin, or windows) and GOARCH specifies the target
+    processor architecture, such as amd64, 386, or arm. Although GOPATH is the only variable you must set, the others occasionally appear in our explanations. 
+    $ go env 
+    GOPATH="/home/gopher/gobook" 
+    GOROOT="/usr/local/go" 
+    GOARCH="amd64" 
+    GOOS="darwin"
+    ...
+
+Documenting Packages:
+    Go style strongly encourages good documentation of package APIs. Each declaration of an exported package member and the package declaration itself should be immediately preceded by a comment explaining its purpose and usage. 
+    Go doc comments are always complete sentences, and the first sentence is usually a summary that starts with the name being declared. Function parameters and other identifiers are mentioned without quotation or markup.
+Internal Packages:
+    The package is the most important mechanism for encapsulation in Go programs. Unexported identifiers are visible only within the same package, and exported identifiers are visible to the world. 
+Querying Packages:
+    The go list tool reports information about available packages. In its simplest form, go list tests whether a package is present in the workspace and prints its import path if so:
+    $ go list github.com/go-sql-driver/mysql 
+    github.com/go-sql-driver/mysql 
+
+    An argument to go list may contain the “...” wildcard, which matches any substring of a package’s import path. We can use it to enumerate all the packages within a Go workspace:
+    $ go list ... 
+    archive/tar 
+    archive/zip 
+    bufio 
+    bytes 
+    cmd/addr2line 
+    cmd/api
+**********************************
+The go test Tool:
+    The go test subcommand is a test driver for Go packages that are organized according to certain conventions. In a package directory, files whose names end with _test.go are not part of the package ordinarily built by go build but are a part of it when built by go test.
+    Within *_test.go files, three kinds of functions are treated specially: tests, benchmarks, and examples. A test function, which is a function whose name begins with Test, exercises some program logic for correct behavior; go test calls the test function and reports the result, which is either PASS or FAIL. A benchmark function has a name beginning with Benchmark and measures the performance of some operation; go test reports the mean execution time of the operation.
+    The go test tool scans the *_test.go files for these special functions, generates a temporary main package that calls them all in the proper way, builds and runs it, reports the results, and then cleans up.
+Test Functions:
+    Each test file must import the testing package. Test functions have the following signature:
+    func TestName(t *testing.T) {
+         // ... 
+         }
+    As a bonus, running go test is usually quicker than manually going through the steps described in the bug report, allowing us to iterate more rapidly. If the test suite contains many slow tests, we may make even faster progress if we’re selective about which ones we run. The -v flag prints the name and execution time of each test in the package:
+    go test -v 
+    and the -run flag, whose argument is a regular expression, causes go test to run only those tests whose function name matches the pattern:
+    $ go test -v -run="French|Canal" 
+
+Randomized Testing:
+    Table-driven tests are convenient for checking that a function works on inputs carefully selected to exercise interesting cases in the logic. Another approach, randomized testing, explores a broader range of inputs by constructing inputs at random. 
+    How do we know what output to expect from our function, given a random input? There are two strategies. The first is to write an alternative implementation of the function that uses a less efficient but simpler and clearer algorithm, and check that both implementations give the same result. The second is to create input values according to a pattern so that we know what output to expect.
+
+White-Box Testing:
+    One way of categorizing tests is by the level of knowledge they require of the internal workings of the package under test. A black-box test assumes nothing about the package other than what is exposed by its API and specified by its documentation; the package’s internals are opaque. In contrast, a white- box test has privileged access to the internal functions and data structures of the package and can make observations and changes that an ordinary client cannot. For example, a white-box test can check that the invariants of the package’s data types are maintained after every operation. (The name white box is traditional, but clear box would be more accurate.) 
+    The two approaches are complementary. Black-box tests are usually more robust, needing fewer updates as the software evolves. They also help the test author empathize with the client of the package and can reveal flaws in the API design. In contrast, white-box tests can provide more detailed coverage of the trickier parts of the implementation.
+
+Avoiding Brittle Tests:
+    An application that often fails when it encounters new but valid inputs is called buggy; a test that spuriously fails when a sound change was made to the program is called brittle. Just as a buggy program frustrates its users, a brittle test exasperates its maintainers. The most brittle tests, which fail for almost any change to the production code, good or bad, are sometimes called change detector or status quo tests, and the time spent dealing with them can quickly deplete any benefit they once seemed to provide
+    When a function under test produces a complex output such as a long string, an elaborate data structure, or a file, it’s tempting to check that the output is exactly equal to some “golden” value that was expected when the test was written. But as the program evolves, parts of the output will likely change, probably in good ways, but change nonetheless. And it’s not just the output; functions with complex inputs often break because the input used in a test is no longer valid.
+    The easiest way to avoid brittle tests is to check only the properties you care about. Test your program’s simpler and more stable interfaces in preference to its internal functions. Be selective in your assertions. Don’t check for exact string matches, for example, but look for relevant substrings that will remain unchanged as the program evolves. It’s often worth writing a substantial function to distill a complex output down to its essence so that assertions will be reliable. Even though that may seem like a lot of up-front effort, it can pay for itself quickly in time that would otherwise be spent fixing spuriously failing tests.
+ 
+ Coverage: 
+    By its nature, testing is never complete. As the influential computer scientist Edsger Dijkstra put it, “Testing shows the presence, not the absence of bugs.” No quantity of tests can ever prove a package free of bugs. At best, they increase our confidence that the package works well in a wide range of important scenarios. 
+    The degree to which a test suite exercises the package under test is called the test’s coverage. Coverage can’t be quantified directly—the dynamics of all but the most trivial programs are beyond precise measurement—but there are heuristics that can help us direct our testing efforts to where they are more likely to be useful. 
+    Statement coverage is the simplest and most widely used of these heuristics. The statement coverage of a test suite is the fraction of source statements that are executed at least once during the test. In this section, we’ll use Go’s cover tool, which is integrated into go test, to measure statement coverage and help identify obvious gaps in the tests. 
+    go test -v -run=Coverage
+    This command displays the usage message of the coverage tool:
+    go tool cover 
+    The go tool command runs one of the executables from the Go toolchain. These programs live in the directory $GOROOT/pkg/tool/${GOOS}_${GOARCH}. Thanks to go build, we rarely need to invoke them directly. 
+    Now we run the test with the -coverprofile flag:
+    $ go test -run=Coverage -coverprofile=c.out gopl.io/ch7/eval 
+    ok gopl.io/ch7/eval 0.032s coverage: 68.5% of statements
+    This flag enables the collection of coverage data by instrumenting the production code. That is, it modifies a copy of the source code so that before each block of statements is executed, a boolean variable is set, with one variable per block. Just before the modified program exits, it writes the value of each variable to the specified log file c.out and prints a summary of the fraction of statements that were executed. (If all you need is the summary, use go test -cover.)
+    If go test is run with the -covermode=count flag, the instrumentation for each block increments a counter instead of setting a boolean. The resulting log of execution counts of each block enables quantitative comparisons between “hotter” blocks, which are more frequently executed, and “colder” ones.
+    $ go tool cover -html=c.out
+    Each statement is colored green if it was covered or red if it was not covered. For clarity, we’ve shaded the background of the red text. We can see immediately that none of our inputs exercised the unary operator Eval method. If we add this new test case to the table and re-run the previous two commands, the unary expression code becomes green:
+Benchmark Functions:
+    Benchmarking is the practice of measuring the performance of a program on a fixed workload. In Go, a benchmark function looks like a test function, but with the Benchmark prefix and a *testing.B parameter that provides most of the same methods as a *testing.T, plus a few extra related to performance measurement. It also exposes an integer field N, which specifies the number of times to perform the operation being measured.
+    We run it with the command below. Unlike tests, by default no benchmarks are run. The argument to the -bench flag selects which benchmarks to run. It is a regular expression matching the names of Benchmark functions, with a default value that matches none of them. The “.” pattern causes it to match all benchmarks in the word package, but since there’s only one, -bench=IsPalindrome would have been equivalent. 
+    The benchmark name’s numeric suffix, 8 here, indicates the value of GOMAXPROCS, which is important for concurrent benchmarks. The report tells us that each call to IsPalindrome took about 1.035 microseconds, averaged over 1,000,000 runs. Since the benchmark runner initially has no idea how long the operation takes, it makes some initial measurements using small values of N and then extrapolates to a value large enough for a stable timing measurement to be made.
+    The reason the loop is implemented by the benchmark function, and not by the calling code in the test driver, is so that the benchmark function has the opportunity to execute any necessary one-time setup code outside the loop without this adding to the measured time of each iteration. If this setup code is still perturbing the results, the testing.B parameter provides methods to stop, resume, and reset the timer, but these are rarely needed. 
+
+Profiling:
+    When we wish to look carefully at the speed of our programs, the best technique for identifying the critical code is profiling. Profiling is an automated approach to performance measurement based on sampling a number of profile events during execution, then extrapolating from them during a post- processing step; the resulting statistical summary is called a profile. 
+    Go supports many kinds of profiling, each concerned with a different aspect of performance, but all of them involve recording a sequence of events of interest, each of which has an accompanying stack trace—the stack of function calls active at the moment of the event. The go test tool has built-in support for several kinds of profiling.
+    A CPU profile identifies the functions whose execution requires the most CPU time. The currently running thread on each CPU is interrupted periodically by the operating system every few milliseconds, with each interruption recording one profile event before normal execution resumes. A heap profile identifies the statements responsible for allocating the most memory. The profiling library samples calls to the internal memory allocation routines so that on average, one profile event is recorded per 512KB of allocated memory.
+    A blocking profile identifies the operations responsible for blocking goroutines the longest, such as system calls, channel sends and receives, and acquisitions of locks. The profiling library records an event every time a goroutine is blocked by one of these operations.
+    Gathering a profile for code under test is as easy as enabling one of the flags below. Be careful when using more than one flag at a time, however: the machinery for gathering one kind of profile may skew the results of others.
+    $ go test -cpuprofile=cpu.out 
+    $ go test -blockprofile=block.out
+    $ go test -memprofile=mem.out 
+*****************************
+Reflection: 
+    Go provides a mechanism to update variables and inspect their values at run time, to call their methods, and to apply the operations intrinsic to their representation, all without knowing their types at compile time. This mechanism is called reflection. Reflection also lets us treat types themselves as first-class values.
+    Sometimes we need to write a function capable of dealing uniformly with values of types that don’t satisfy a common interface, don’t have a known representation, or don’t exist at the time we design the function—or even all three.
+    A familiar example is the formatting logic within fmt.Fprintf, which can usefully print an arbitrary value of any type, even a user-defined one. Let’s try to implement a function like it using what we know already. For simplicity, our function will accept one argument and will return the result as a string like fmt.Sprint does, so we’ll call it Sprint. 
+    A reflect.Value and an interface{} can both hold arbitrary values. The difference is that an empty interface hides the representation and intrinsic operations of the value it holds and exposes none of its methods, so unless we know its dynamic type and use a type assertion to peer inside it (as we did above), there is little we can do to the value within. In contrast, a Value has many methods for inspecting its contents, regardless of its type. Let’s use them for our second attempt at a general formatting function, which we’ll call format.Any.
+    Instead of a type switch, we use reflect.Value’s Kind method to discriminate the cases. Although there are infinitely many types, there are only a finite number of kinds of type: the basic types Bool, String, and all the numbers; the aggregate types Array and Struct; the reference types Chan, Func, Ptr, Slice, and Map; Interface types; and finally Invalid, meaning no value at all. (The zero value of a reflect.Value has kind Invalid.)
+Displaying the Methods of a Type:
+    Both reflect.Type and reflect.Value have a method called Method. Each t.Method(i) call returns an instance of reflect.Method, a struct type that describes the name and type of a single method. Each v.Method(i) call returns a reflect.Value representing a method value (§6.4), that is, a method bound to its receiver. Using the reflect.Value.Call method (which we don’t have space to show here), it’s possible to call Values of kind Func like this one, but this program needs only its Type. 
+*******************************
+Low-Level Programming:
+    The design of Go guarantees a number of safety properties that limit the ways in which a Go program can “go wrong.” During compilation, type checking detects most attempts to apply an operation to a value that is inappropriate for its type, for instance, subtracting one string from another. Strict rules for type conversions prevent direct access to the internals of built-in types like strings, maps, slices, and channels.
+    For errors that cannot be detected statically, such as out-of-bounds array accesses or nil pointer dereferences, dynamic checks ensure that the program immediately terminates with an informative error whenever a forbidden operation occurs. Automatic memory management (garbage collection) eliminates “use after free” bugs, as well as most memory leaks.
+    Many implementation details are inaccessible to Go programs. There is no way to discover the memory layout of an aggregate type like a struct, or the machine code for a function, or the identity of the operating system thread on which the current goroutine is running. Indeed, the Go scheduler freely moves goroutines from one thread to another. A pointer identifies a variable without revealing the variable’s numeric address. Addresses may change as the garbage collector moves variables; pointers are transparently updated.
+unsafe.Sizeof, Alignof, and Offsetof:
+    The unsafe.Sizeof function reports the size in bytes of the representation of its operand, which may be an expression of any type; the expression is not evaluated. A call to Sizeof is a constant expression of type uintptr, so the result may be used as the dimension of an array type, or to compute other constants.
+    Sizeof reports only the size of the fixed part of each data structure, like the pointer and length of a string, but not indirect parts like the contents of the string. Typical sizes for all non-aggregate Go types are shown below, though the exact sizes may vary by toolchain. For portability, we’ve given the sizes of reference types (or types containing references) in terms of words, where a word is 4 bytes on a 32-bit platform and 8 bytes on a 64-bit platform.
     

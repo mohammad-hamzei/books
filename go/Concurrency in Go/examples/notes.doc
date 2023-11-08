@@ -1,0 +1,10 @@
+Race Conditions:
+    A race condition occurs when two or more operations must execute in the correct order, but the program has not been written so that this order is guaranteed to be maintained.
+    Most of the time, this shows up in what’s called a data race, where one concurrent operation attempts to read a variable while at some undetermined time another con‐ current operation is attempting to write to the same variable.
+    In Go, you can use the go keyword to run a function concurrently.
+
+Atomicity:
+    When something is considered atomic, or to have the property of atomicity, this means that within the context that it is operating, it is indivisible, or uninterruptible.
+    The first thing that’s very important is the word “context.” Something may be atomic in one context, but not another. Operations that are atomic within the context of your process may not be atomic in the context of the operating system; operations that are atomic within the context of the operating system may not be atomic within the con‐ text of your machine; and operations that are atomic within the context of your machine may not be atomic within the context of your application. In other words, the atomicity of an operation can change depending on the currently defined scope. This fact can work both for and against you!
+    Atomicity is important because if something is atomic, implicitly it is safe within concurrent contexts. This allows us to compose logically correct pro‐ grams, and—as we’ll later see—can even serve as a way to optimize concurrent pro‐ grams.
+    
