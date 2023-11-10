@@ -1,5 +1,5 @@
 Go: 
-	The Go Programming Language
+	The Go Programming Language d
 	Concurrency in Go
 	Building Distributed Applications in Gin_ A hands-on guide for Go developers to build and deploy distributed web apps with the Gin framework-Packt Publishing (2021)
 	Learn Data Structures and Algorithms with Golang_ Level up your Go programming skills to develop faster and more efficient code-Packt Publishing (2019)
